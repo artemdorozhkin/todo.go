@@ -14,6 +14,7 @@ const (
 	CursorInvisible byte  = 0
 )
 
+// class UI
 type Id = int
 
 type Ui struct {
@@ -63,7 +64,39 @@ func (u *Ui) EndList() {
 }
 
 func (u *Ui) End() {
+}
 
+// end class UI
+
+// class Focus
+const (
+	FocusTodo = iota
+	FocusDone = iota
+)
+
+type Focus struct {
+	Focus int
+}
+
+func (f *Focus) Switch() {
+	switch f.Focus {
+	case FocusTodo:
+		f.Focus = FocusDone
+	case FocusDone:
+		f.Focus = FocusTodo
+	}
+}
+
+// end class Focus
+
+func listUp(listCurr *Id) {
+	*listCurr = max(*listCurr-1, 0)
+}
+
+func listDown(list *[]string, listCurr *Id) {
+	if *listCurr+1 < len(*list) {
+		*listCurr++
+	}
 }
 
 func main() {
@@ -99,29 +132,33 @@ func main() {
 		"Have a breakfast",
 		"Make a cup of coffee",
 	}
-	// doneCurr := 0
+	doneCurr := 0
 
 	var ui Ui = Ui{Stdscr: stdscr}
+	focus := Focus{}
 
 	for !quit {
 		stdscr.Erase()
 		ui.Begin(0, 0)
 		{
-			ui.Label("TODO:", RegularPair)
-			ui.BeginList(todoCurr)
-			for index, todo := range todos {
-				ui.ListElement(fmt.Sprintf("- [ ] %s", todo), index)
+			switch focus.Focus {
+			case FocusTodo:
+				ui.Label("[TODO] DONE ", RegularPair)
+				ui.Label("------------", RegularPair)
+				ui.BeginList(todoCurr)
+				for index, todo := range todos {
+					ui.ListElement(fmt.Sprintf("- [ ] %s", todo), index)
+				}
+				ui.EndList()
+			case FocusDone:
+				ui.Label(" TODO [DONE]", RegularPair)
+				ui.Label("------------", RegularPair)
+				ui.BeginList(doneCurr)
+				for index, done := range dones {
+					ui.ListElement(fmt.Sprintf("- [x] %s", done), index)
+				}
+				ui.EndList()
 			}
-			ui.EndList()
-
-			ui.Label("----------------------------------------", RegularPair)
-
-			ui.Label("DONE:", RegularPair)
-			ui.BeginList(0)
-			for index, done := range dones {
-				ui.ListElement(fmt.Sprintf("- [x] %s", done), index+1)
-			}
-			ui.EndList()
 		}
 		ui.End()
 
@@ -133,16 +170,34 @@ func main() {
 		case "q":
 			quit = true
 		case "w":
-			todoCurr = max(todoCurr-1, 0)
+			switch focus.Focus {
+			case FocusTodo:
+				listUp(&todoCurr)
+			case FocusDone:
+				listUp(&doneCurr)
+			}
 		case "s":
-			if todoCurr+1 < len(todos) {
-				todoCurr++
+			switch focus.Focus {
+			case FocusTodo:
+				listDown(&todos, &todoCurr)
+			case FocusDone:
+				listDown(&dones, &doneCurr)
 			}
 		case "\n":
-			if todoCurr < len(todos) {
-				dones = append(dones, todos[todoCurr])
-				todos = slices.Delete(todos, todoCurr, todoCurr+1)
+			switch focus.Focus {
+			case FocusTodo:
+				if todoCurr < len(todos) {
+					dones = append(dones, todos[todoCurr])
+					todos = slices.Delete(todos, todoCurr, todoCurr+1)
+				}
+			case FocusDone:
+				if doneCurr < len(dones) {
+					todos = append(todos, dones[doneCurr])
+					dones = slices.Delete(dones, doneCurr, doneCurr+1)
+				}
 			}
+		case "\t":
+			focus.Switch()
 		default:
 			continue
 		}
