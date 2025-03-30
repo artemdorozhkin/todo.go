@@ -99,6 +99,16 @@ func listDown(list *[]string, listCurr *Id) {
 	}
 }
 
+func listTransfer(listDst *[]string, listSrc *[]string, listSrcCurr *Id) {
+	if *listSrcCurr < len(*listSrc) {
+		*listDst = append(*listDst, (*listSrc)[*listSrcCurr])
+		*listSrc = slices.Delete(*listSrc, *listSrcCurr, *listSrcCurr+1)
+	}
+	if *listSrcCurr >= len(*listSrc) && len(*listSrc) > 0 {
+		*listSrcCurr = len(*listSrc) - 1
+	}
+}
+
 func main() {
 	stdscr, err := goncurses.Init()
 	goncurses.Echo(false)
@@ -186,15 +196,9 @@ func main() {
 		case "\n":
 			switch focus.Focus {
 			case FocusTodo:
-				if todoCurr < len(todos) {
-					dones = append(dones, todos[todoCurr])
-					todos = slices.Delete(todos, todoCurr, todoCurr+1)
-				}
+				listTransfer(&dones, &todos, &todoCurr)
 			case FocusDone:
-				if doneCurr < len(dones) {
-					todos = append(todos, dones[doneCurr])
-					dones = slices.Delete(dones, doneCurr, doneCurr+1)
-				}
+				listTransfer(&todos, &dones, &doneCurr)
 			}
 		case "\t":
 			focus.Switch()
