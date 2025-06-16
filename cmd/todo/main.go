@@ -1,118 +1,37 @@
 package main
 
 import (
+	"todo.go/internal/state"
+	list "todo.go/internal/todo"
+	"todo.go/internal/ui"
+
 	"fmt"
 	"log"
-	"slices"
+	"os"
 
 	"github.com/rthornton128/goncurses"
 )
 
-const (
-	RegularPair     int16 = 1
-	HighlightPair   int16 = 2
-	CursorInvisible byte  = 0
-)
-
-// class UI
-type Id = int
-
-type Ui struct {
-	Stdscr   *goncurses.Window
-	ListCurr *Id
-	Row      int
-	Col      int
-}
-
-func (u *Ui) Begin(row int, col int) {
-	u.Row = row
-	u.Col = col
-}
-
-func (u *Ui) Label(text string, pair int16) {
-	u.Stdscr.Move(u.Row, u.Col)
-	u.Stdscr.AttrOn(goncurses.ColorPair(pair))
-	u.Stdscr.Print(text)
-	u.Stdscr.AttrOff(goncurses.ColorPair(pair))
-	u.Row++
-}
-
-func (u *Ui) BeginList(id Id) {
-	if u.ListCurr != nil {
-		panic("Nested lists are not allowed!")
-	}
-
-	u.ListCurr = &id
-}
-
-func (u *Ui) ListElement(label string, id Id) bool {
-	if u.ListCurr == nil {
-		panic("Not allowed to create list elements outside off lists")
-	}
-	idCurr := *u.ListCurr
-	var pair int16 = RegularPair
-	if idCurr == id {
-		pair = HighlightPair
-	}
-	u.Label(label, pair)
-
-	return false
-}
-
-func (u *Ui) EndList() {
-	u.ListCurr = nil
-}
-
-func (u *Ui) End() {
-}
-
-// end class UI
-
-// class Focus
-const (
-	FocusTodo = iota
-	FocusDone = iota
-)
-
-type Focus struct {
-	Focus int
-}
-
-func (f *Focus) Switch() {
-	switch f.Focus {
-	case FocusTodo:
-		f.Focus = FocusDone
-	case FocusDone:
-		f.Focus = FocusTodo
-	}
-}
-
-// end class Focus
-
-func listUp(listCurr *Id) {
-	*listCurr = max(*listCurr-1, 0)
-}
-
-func listDown(list *[]string, listCurr *Id) {
-	if *listCurr+1 < len(*list) {
-		*listCurr++
-	}
-}
-
-func listTransfer(listDst *[]string, listSrc *[]string, listSrcCurr *Id) {
-	if *listSrcCurr < len(*listSrc) {
-		*listDst = append(*listDst, (*listSrc)[*listSrcCurr])
-		*listSrc = slices.Delete(*listSrc, *listSrcCurr, *listSrcCurr+1)
-	}
-	if *listSrcCurr >= len(*listSrc) && len(*listSrc) > 0 {
-		*listSrcCurr = len(*listSrc) - 1
-	}
-}
-
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprint(os.Stderr, "Usage: todo-go <file-path>\n")
+		fmt.Fprint(os.Stderr, "Error: file path is not provided\n")
+		os.Exit(1)
+	}
+
+	filepath := os.Args[1]
+
+	todos := []string{}
+	todoCurr := 0
+
+	dones := []string{}
+	doneCurr := 0
+
+	state.Load(&todos, &dones, filepath)
+
 	stdscr, err := goncurses.Init()
 	goncurses.Echo(false)
-	goncurses.Cursor(CursorInvisible)
+	goncurses.Cursor(ui.CursorInvisible)
 
 	if err != nil {
 		log.Fatal(err)
@@ -120,57 +39,43 @@ func main() {
 	defer goncurses.End()
 
 	goncurses.StartColor()
-	if err := goncurses.InitPair(RegularPair, goncurses.C_WHITE, goncurses.C_BLACK); err != nil {
+	if err := goncurses.InitPair(ui.RegularPair, goncurses.C_WHITE, goncurses.C_BLACK); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := goncurses.InitPair(HighlightPair, goncurses.C_BLACK, goncurses.C_WHITE); err != nil {
+	if err := goncurses.InitPair(ui.HighlightPair, goncurses.C_BLACK, goncurses.C_WHITE); err != nil {
 		log.Fatal(err)
 	}
 
 	quit := false
 
-	todos := []string{
-		"Write the todo app",
-		"Buy a bread",
-		"Make a cup of coffee",
-	}
-	todoCurr := 0
-
-	dones := []string{
-		"Start learning go",
-		"Have a breakfast",
-		"Make a cup of coffee",
-	}
-	doneCurr := 0
-
-	var ui Ui = Ui{Stdscr: stdscr}
-	focus := Focus{}
+	var window ui.Ui = ui.Ui{Stdscr: stdscr}
+	status := ui.Status{}
 
 	for !quit {
 		stdscr.Erase()
-		ui.Begin(0, 0)
+		window.Begin(0, 0)
 		{
-			switch focus.Focus {
-			case FocusTodo:
-				ui.Label("[TODO] DONE ", RegularPair)
-				ui.Label("------------", RegularPair)
-				ui.BeginList(todoCurr)
+			switch status.Focus {
+			case ui.FocusTodo:
+				window.Label("[TODO] DONE ", ui.RegularPair)
+				window.Label("------------", ui.RegularPair)
+				window.BeginList(todoCurr)
 				for index, todo := range todos {
-					ui.ListElement(fmt.Sprintf("- [ ] %s", todo), index)
+					window.ListElement(fmt.Sprintf("- [ ] %s", todo), index)
 				}
-				ui.EndList()
-			case FocusDone:
-				ui.Label(" TODO [DONE]", RegularPair)
-				ui.Label("------------", RegularPair)
-				ui.BeginList(doneCurr)
+				window.EndList()
+			case ui.FocusDone:
+				window.Label(" TODO [DONE]", ui.RegularPair)
+				window.Label("------------", ui.RegularPair)
+				window.BeginList(doneCurr)
 				for index, done := range dones {
-					ui.ListElement(fmt.Sprintf("- [x] %s", done), index)
+					window.ListElement(fmt.Sprintf("- [x] %s", done), index)
 				}
-				ui.EndList()
+				window.EndList()
 			}
 		}
-		ui.End()
+		window.End()
 
 		stdscr.Refresh()
 
@@ -180,30 +85,31 @@ func main() {
 		case "q":
 			quit = true
 		case "w":
-			switch focus.Focus {
-			case FocusTodo:
-				listUp(&todoCurr)
-			case FocusDone:
-				listUp(&doneCurr)
+			switch status.Focus {
+			case ui.FocusTodo:
+				list.Up(&todoCurr)
+			case ui.FocusDone:
+				list.Up(&doneCurr)
 			}
 		case "s":
-			switch focus.Focus {
-			case FocusTodo:
-				listDown(&todos, &todoCurr)
-			case FocusDone:
-				listDown(&dones, &doneCurr)
+			switch status.Focus {
+			case ui.FocusTodo:
+				list.Down(&todos, &todoCurr)
+			case ui.FocusDone:
+				list.Down(&dones, &doneCurr)
 			}
 		case "\n":
-			switch focus.Focus {
-			case FocusTodo:
-				listTransfer(&dones, &todos, &todoCurr)
-			case FocusDone:
-				listTransfer(&todos, &dones, &doneCurr)
+			switch status.Focus {
+			case ui.FocusTodo:
+				list.Transfer(&dones, &todos, &todoCurr)
+			case ui.FocusDone:
+				list.Transfer(&todos, &dones, &doneCurr)
 			}
 		case "\t":
-			focus.Switch()
+			status.Switch()
 		default:
 			continue
 		}
 	}
+	state.Save(&todos, &dones, filepath)
 }
